@@ -1,0 +1,14 @@
+[project]
+name = "ta-2025"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "albumentations>=2.0.6",
+    "matplotlib>=3.10.3",
+    "opencv-contrib-python>=4.11.0.86",
+    "pillow>=11.2.1",
+    "torch>=2.7.0",
+    "tqdm>=4.67.1",
+]
