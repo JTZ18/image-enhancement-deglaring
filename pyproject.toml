@@ -9,6 +9,9 @@ dependencies = [
     "matplotlib>=3.10.3",
     "opencv-contrib-python>=4.11.0.86",
     "pillow>=11.2.1",
+    "python-dotenv>=1.1.0",
+    "scikit-image>=0.25.2",
     "torch>=2.7.0",
     "tqdm>=4.67.1",
+    "wandb>=0.19.11",
 ]

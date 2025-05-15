@@ -5,6 +5,9 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import random
+
+from .optimized_dataset import create_optimized_dataloaders
 
 
 class GlareRemovalDataset(Dataset):
@@ -12,21 +15,35 @@ class GlareRemovalDataset(Dataset):
     Dataset for glare removal task handling concatenated images in format 
     [Ground Truth, Glared Image, Glare Mask]
     """
-    def __init__(self, image_paths, transform=None):
+    def __init__(self, image_paths, transform=None, seed=None):
         """
         Initialize the dataset
         
         Args:
             image_paths (list): List of image file paths
             transform (albumentations.Compose, optional): Transformations to apply
+            seed (int, optional): Random seed for reproducibility
         """
         self.image_paths = image_paths
         self.transform = transform
+        self.seed = seed
+        
+        # Sort image paths to ensure consistent ordering
+        self.image_paths.sort()
         
     def __len__(self):
         return len(self.image_paths)
     
     def __getitem__(self, index):
+        # Set seed based on fixed seed and index for reproducible augmentations
+        if self.seed is not None:
+            # Use different seed for each image but derived deterministically from base seed
+            # This ensures the same image gets the same augmentations in multiple runs
+            seed_for_augmentation = self.seed + index
+            random.seed(seed_for_augmentation)
+            np.random.seed(seed_for_augmentation)
+            torch.manual_seed(seed_for_augmentation)
+            
         image_path = self.image_paths[index]
         
         # Load the image
@@ -49,6 +66,7 @@ class GlareRemovalDataset(Dataset):
         # Apply transformations
         if self.transform:
             # Make sure masks are correctly transformed with the same augmentations
+            # Force deterministic behavior for transformations
             augmented = self.transform(image=glared_image_gray, mask=ground_truth_gray)
             glared_image_tensor = augmented['image']  # Already a tensor from ToTensorV2
             ground_truth_tensor = augmented['mask']  # Already a tensor from ToTensorV2
@@ -78,14 +96,20 @@ def get_transformations():
     train_transform = A.Compose([
         A.RandomRotate90(p=0.5),
         A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.3),  # Add vertical flip
         # Replace ShiftScaleRotate with Affine as recommended
         A.Affine(scale=(0.9, 1.1), translate_percent=0.0625, rotate=(-15, 15), p=0.5),
         A.OneOf([
-            # Fix GaussNoise parameters
-            A.GaussNoise(mean=0, var_limit=10.0, per_channel=True, p=0.5),
+            # Using correct GaussNoise parameters
+            A.GaussNoise(p=0.5),  # Use default parameters
             A.GaussianBlur(blur_limit=3, p=0.5),
         ], p=0.5),
-        A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+        # Add glare-specific augmentations
+        A.OneOf([
+            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+            A.RandomGamma(gamma_limit=(80, 120), p=0.5),  # Helps with glare-like effects
+            A.CLAHE(clip_limit=4.0, tile_grid_size=(8, 8), p=0.5),  # Enhances contrast locally
+        ], p=0.5),
         A.Resize(512, 512),
         A.Normalize(mean=0.5, std=0.5),
         ToTensorV2(),
@@ -100,7 +124,7 @@ def get_transformations():
     return train_transform, val_transform
 
 
-def create_dataloaders(data_dir, batch_size=32, val_split=0.2, num_workers=4):
+def create_dataloaders(data_dir, batch_size=32, val_split=0.2, num_workers=4, seed=None):
     """
     Create training and validation dataloaders
     
@@ -109,6 +133,7 @@ def create_dataloaders(data_dir, batch_size=32, val_split=0.2, num_workers=4):
         batch_size (int): Batch size for dataloaders
         val_split (float): Validation split ratio (0.0 to 1.0)
         num_workers (int): Number of worker threads for dataloaders
+        seed (int, optional): Seed for reproducible dataset splitting
         
     Returns:
         tuple: (train_loader, val_loader) DataLoader objects
@@ -120,8 +145,16 @@ def create_dataloaders(data_dir, batch_size=32, val_split=0.2, num_workers=4):
             if file.lower().endswith(('.png', '.jpg', '.jpeg')):
                 image_paths.append(os.path.join(root, file))
     
-    # Shuffle and split into train/val
-    np.random.shuffle(image_paths)
+    # Sort paths to ensure consistent order before shuffling
+    image_paths.sort()
+    
+    # Shuffle and split into train/val with reproducible seed if provided
+    if seed is not None:
+        rng = np.random.RandomState(seed)
+        rng.shuffle(image_paths)
+    else:
+        np.random.shuffle(image_paths)
+        
     split_idx = int(len(image_paths) * (1 - val_split))
     train_paths = image_paths[:split_idx]
     val_paths = image_paths[split_idx:]
@@ -130,16 +163,40 @@ def create_dataloaders(data_dir, batch_size=32, val_split=0.2, num_workers=4):
     train_transform, val_transform = get_transformations()
     
     # Create datasets
-    train_dataset = GlareRemovalDataset(train_paths, transform=train_transform)
-    val_dataset = GlareRemovalDataset(val_paths, transform=val_transform)
+    train_dataset = GlareRemovalDataset(train_paths, transform=train_transform, seed=seed)
+    val_dataset = GlareRemovalDataset(val_paths, transform=val_transform, seed=seed)
     
-    # Create dataloaders
+    # Define worker initialization function for reproducibility
+    def worker_init_fn(worker_id):
+        # Each worker needs a different seed but deterministically derived from the global seed
+        if seed is not None:
+            worker_seed = seed + worker_id
+        else:
+            worker_seed = torch.initial_seed() % 2**32
+        
+        # Set all random seeds for this worker
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
+        torch.manual_seed(worker_seed)
+    
+    # Create dataloaders with deterministic behavior
+    generator = torch.Generator()
+    if seed is not None:
+        generator.manual_seed(seed)
+    
+    # Force deterministic behavior for data loading
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 
         shuffle=True, 
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        worker_init_fn=worker_init_fn,
+        generator=generator,
+        drop_last=True  # For consistent batch sizes
     )
     
     val_loader = DataLoader(
@@ -147,7 +204,8 @@ def create_dataloaders(data_dir, batch_size=32, val_split=0.2, num_workers=4):
         batch_size=batch_size, 
         shuffle=False, 
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        worker_init_fn=worker_init_fn
     )
     
     return train_loader, val_loader
