@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-enhancement-api
+  namespace: image-enhancement
+  labels:
+    app: image-enhancement-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: image-enhancement-api
+  template:
+    metadata:
+      labels:
+        app: image-enhancement-api
+    spec:
+      containers:
+      - name: api
+        image: image-enhancement-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4000
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 4000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 4000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        env:
+        - name: MODEL_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: model-config
+              key: model-path
+        volumeMounts:
+        - name: logs-volume
+          mountPath: /app/api/logs
+      volumes:
+      - name: logs-volume
+        emptyDir: {}

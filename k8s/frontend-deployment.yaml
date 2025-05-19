@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-enhancement-frontend
+  namespace: image-enhancement
+  labels:
+    app: image-enhancement-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: image-enhancement-frontend
+  template:
+    metadata:
+      labels:
+        app: image-enhancement-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: image-enhancement-frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8501
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: API_URL
+          value: "http://image-enhancement-api.image-enhancement.svc.cluster.local:4000"
+        readinessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 15
+          periodSeconds: 10

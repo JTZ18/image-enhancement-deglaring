@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-config
+  namespace: image-enhancement
+data:
+  model-path: "/app/best_model.onnx"
