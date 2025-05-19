@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY api/app.py api/
 COPY api/requirements.txt api/
 COPY src/ src/
-COPY best_model.pth .
+COPY best_model.onnx .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r api/requirements.txt

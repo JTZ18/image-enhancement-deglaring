@@ -4,3 +4,4 @@ python-multipart==0.0.20
 torch==2.7.0
 numpy==2.2.5
 pillow==11.2.1
+onnxruntime==1.22.0

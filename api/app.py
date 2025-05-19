@@ -10,6 +10,7 @@ import base64
 import uvicorn
 import logging
 from logging.handlers import RotatingFileHandler
+import onnxruntime as ort
 
 # Configure logging
 log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -40,9 +41,8 @@ console_handler.setFormatter(console_formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# Add parent directory to path to import the model modules
+# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.model import OptimizedUNet
 
 app = FastAPI()
 
@@ -64,40 +64,42 @@ def log_model_info(model):
     logger.debug(f"Trainable parameters: {trainable_params:,}")
     logger.debug(separator)
 
-# Initialize model
-logger.info("Initializing model...")
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-logger.info(f"Using device: {device}")
-model = OptimizedUNet(in_channels=1, out_channels=1).to(device)
-log_model_info(model)
+# Initialize ONNX model
+logger.info("Initializing ONNX model...")
 
-# Load model weights
-model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'best_model.pth')
-logger.info(f"Loading model from: {model_path}")
+# Load ONNX model
+model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'best_model.onnx')
+logger.info(f"Loading ONNX model from: {model_path}")
 
 try:
-    checkpoint = torch.load(model_path, map_location=device)
-    logger.debug(f"Checkpoint keys: {checkpoint.keys() if isinstance(checkpoint, dict) else 'Not a dictionary'}")
-
-    # The checkpoint contains metadata, so we need to extract the model state dict
-    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-        logger.info("Loading model from 'model_state_dict'")
-        model.load_state_dict(checkpoint["model_state_dict"])
+    # Check if CUDA is available and create appropriate ONNX session
+    if torch.cuda.is_available():
+        logger.info("Using CUDA for ONNX Runtime")
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
     else:
-        # Fallback if the model is saved differently
-        logger.info("Loading model directly from checkpoint")
-        model.load_state_dict(checkpoint)
+        logger.info("Using CPU for ONNX Runtime")
+        providers = ['CPUExecutionProvider']
 
-    logger.info("Model loaded successfully")
+    # Create ONNX Runtime session
+    ort_session = ort.InferenceSession(model_path, providers=providers)
+    logger.info("ONNX model loaded successfully")
+
+    # Log model input and output details
+    input_name = ort_session.get_inputs()[0].name
+    output_name = ort_session.get_outputs()[0].name
+    input_shape = ort_session.get_inputs()[0].shape
+    output_shape = ort_session.get_outputs()[0].shape
+
+    logger.info(f"Model input name: {input_name}, shape: {input_shape}")
+    logger.info(f"Model output name: {output_name}, shape: {output_shape}")
+
 except Exception as e:
-    logger.error(f"Error loading model: {str(e)}")
+    logger.error(f"Error loading ONNX model: {str(e)}")
     import traceback
     logger.error(traceback.format_exc())
     raise
 
-model.to(device)
-model.eval()
-logger.info("Model initialization complete")
+logger.info("ONNX model initialization complete")
 
 @app.get("/ping")
 async def ping():
@@ -155,25 +157,26 @@ async def infer(image: UploadFile = File(...)):
         img_tensor = torch.from_numpy(img_gray).float().unsqueeze(0).unsqueeze(0)
         logger.info(f"[{request_id}] Input tensor shape: {img_tensor.shape}")
 
-        # Send tensor to device
-        img_tensor = img_tensor.to(device)
+        # Perform inference with ONNX Runtime
+        logger.info(f"[{request_id}] Running inference with ONNX Runtime...")
+        input_min = img_tensor.min().item()
+        input_max = img_tensor.max().item()
+        logger.info(f"[{request_id}] Input tensor value range: min={input_min:.4f}, max={input_max:.4f}")
 
-        # Perform inference
-        with torch.no_grad():
-            logger.info(f"[{request_id}] Running inference...")
-            input_min = img_tensor.min().item()
-            input_max = img_tensor.max().item()
-            logger.info(f"[{request_id}] Input tensor value range: min={input_min:.4f}, max={input_max:.4f}")
+        # Convert PyTorch tensor to numpy for ONNX Runtime
+        input_numpy = img_tensor.numpy()
 
-            enhanced_img = model(img_tensor)
+        # Run inference
+        ort_inputs = {input_name: input_numpy}
+        ort_outputs = ort_session.run([output_name], ort_inputs)
 
-            output_min = enhanced_img.min().item()
-            output_max = enhanced_img.max().item()
-            logger.info(f"[{request_id}] Model output value range: min={output_min:.4f}, max={output_max:.4f}")
-            logger.info(f"[{request_id}] Model output shape: {enhanced_img.shape}")
+        # Get result from ONNX Runtime output
+        enhanced_img_np = ort_outputs[0].squeeze()
 
-        # Convert output tensor to image
-        enhanced_img_np = enhanced_img.squeeze().cpu().numpy()
+        output_min = enhanced_img_np.min()
+        output_max = enhanced_img_np.max()
+        logger.info(f"[{request_id}] Model output value range: min={output_min:.4f}, max={output_max:.4f}")
+        logger.info(f"[{request_id}] Model output shape: {enhanced_img_np.shape}")
         logger.debug(f"[{request_id}] Numpy array shape after inference: {enhanced_img_np.shape}")
         logger.debug(f"[{request_id}] Output values range: {enhanced_img_np.min()} to {enhanced_img_np.max()}")
 
@@ -216,4 +219,4 @@ async def infer(image: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=4000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=4000)
