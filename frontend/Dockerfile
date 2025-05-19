@@ -8,6 +8,9 @@ COPY requirements.txt .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy samples directory with images
+COPY samples/ samples/
+
 # Copy application code
 COPY app.py .
 
