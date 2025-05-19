@@ -4,7 +4,6 @@ import torch
 import sys
 import os
 import numpy as np
-import cv2
 from PIL import Image
 import io
 import base64
@@ -135,10 +134,10 @@ async def infer(image: UploadFile = File(...)):
         img_np = np.array(img)
         logger.debug(f"[{request_id}] Original numpy array shape: {img_np.shape}, dtype: {img_np.dtype}")
 
-        # Convert to grayscale using OpenCV (matches evaluate.py)
+        # Convert to grayscale using PIL
         if len(img_np.shape) == 3 and img_np.shape[2] >= 3:
-            logger.info(f"[{request_id}] Converting image to grayscale using cv2.cvtColor")
-            img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+            logger.info(f"[{request_id}] Converting image to grayscale using PIL")
+            img_gray = np.array(Image.fromarray(img_np).convert('L'))
         else:
             # Already grayscale
             logger.info(f"[{request_id}] Image is already grayscale")
@@ -146,7 +145,7 @@ async def infer(image: UploadFile = File(...)):
 
         # Resize image to 512x512 (model input size - same as in evaluate.py)
         logger.info(f"[{request_id}] Resizing image to 512x512 for model input")
-        img_gray = cv2.resize(img_gray, (512, 512))
+        img_gray = np.array(Image.fromarray(img_gray).resize((512, 512), Image.LANCZOS))
         logger.debug(f"[{request_id}] Resized numpy array shape: {img_gray.shape}, dtype: {img_gray.dtype}")
 
         # Normalize the image to [0,1]
