@@ -254,7 +254,7 @@ python scripts/export_to_onnx.py \
     ./src/model.py \
     LightweightUNet \
     "1,1,512,512" \
-    --output_onnx_path ./enhanced_model.onnx \
+    --output_onnx_path ./best_model.onnx \
     --dynamic_axes
     # --input_names "input_image" \
     # --output_names "output_image"
