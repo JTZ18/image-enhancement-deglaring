@@ -163,13 +163,11 @@ def get_optimized_transformations(image_size=256, seed=42):
             A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.8),
             A.GaussNoise(p=0.2),
         ], p=0.5),
-        A.Normalize(mean=0.5, std=0.5),
         ToTensorV2(),
     ], seed=seed)
 
     # Minimal validation transforms
     val_transform = A.Compose([
-        A.Normalize(mean=0.5, std=0.5),
         ToTensorV2(),
     ], seed=seed)
 
