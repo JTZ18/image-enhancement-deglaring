@@ -4,6 +4,13 @@ This system enhances grayscale images using a UNet model. It consists of a FastA
 - The deployed frontend is available at https://image-enhancement-frontend.joozcave.uk
 - The deployed backend is available at https://image-enhancement-backend.joozcave.uk
 - The full Weights and Biases report for this project is available [here](https://wandb.ai/jooz-cave/image-deglaring-sweep/reports/Image-De-glaring---VmlldzoxMjg0MTExMw?accessToken=npyx1xtj55rqrp8lqvzuauc3uur79os9udklwnustgslmelvqld3vqhlrn0amz61)
+- The model in production has been converted to ONNX format for faster inference on CPU constrained deployment environments.
+
+> Best Model Statistics:
+> - Trainable Parameters: 486,409
+> - Model Size: 1.86 MB
+> - Val Loss: 0.0168 (on final test set in SD1/val folder dataset)
+
 
 ## Project Structure
 
@@ -20,10 +27,29 @@ This system enhances grayscale images using a UNet model. It consists of a FastA
 │   ├── app.py           # Streamlit application
 │   ├── requirements.txt # Frontend dependencies
 │   └── README.md        # Frontend documentation
+├── scripts/             # Utility scripts
+│   ├── check_png_dimensions.py  # Verify PNG file dimensions
+│   ├── export_to_onnx.py        # Convert PyTorch model to ONNX
+│   ├── extract_weights.py       # Extract weights from model
+│   └── split_image.py           # Split images for processing
+├── k8s/                 # Kubernetes configuration
+│   ├── api-deployment.yaml      # API deployment config
+│   ├── api-service.yaml         # API service config
+│   ├── deploy.sh                # Deployment script
+│   ├── frontend-deployment.yaml # Frontend deployment config
+│   ├── frontend-service.yaml    # Frontend service config
+│   ├── model-configmap.yaml     # Model configuration
+│   └── README.md                # K8s documentation
 ├── src/                 # Model code
+│   ├── __init__.py      # Package initialization
+│   ├── dataset.py       # Dataset loading and preparation
 │   ├── model.py         # UNet model implementation
-│   └── ...
-└── best_model.pth       # Trained model weights
+│   ├── optimized_dataset.py # Optimized data loading
+│   ├── optimized_model.py   # Optimized model implementation
+│   ├── preprocess.py    # Image preprocessing functions
+│   └── utils.py         # Utility functions
+├── best_model.pth       # Trained model weights
+└── best_model.onnx      # Trained model weights in ONNX format
 ```
 
 ## System Requirements
