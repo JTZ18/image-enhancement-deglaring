@@ -31,16 +31,16 @@ def process_image(image_file):
     """Send image to API for processing and return enhanced image."""
     if image_file is None:
         return None
-    
+
     # Create a files dictionary with the image file
     files = {"image": ("image.png", image_file, "image/png")}
-    
+
     # Show processing indicator
     with st.spinner("Enhancing image..."):
         try:
             # Make the API request
             response = requests.post(INFER_ENDPOINT, files=files)
-            
+
             # Check if the request was successful
             if response.status_code == 200:
                 # Get the enhanced image data from the response
@@ -56,20 +56,20 @@ def process_image(image_file):
                 st.error(f"API Error: {response.status_code} - {response.text}")
         except Exception as e:
             st.error(f"Error communicating with API: {str(e)}")
-    
+
     return None
 
 def main():
     # App title and intro
     st.title("Image Enhancement App")
     st.write("Upload an image and see it enhanced using our UNet model!")
-    
+
     # Display current API URL
     st.info(f"Connected to API at: {API_URL}")
-    
+
     # Check API status
     api_status = check_api_status()
-    
+
     # Show API status
     if api_status:
         st.success("✅ API service is online and ready")
@@ -77,37 +77,37 @@ def main():
         st.error("❌ API service is offline. Please start the API service.")
         st.info("Run the API service with: `python api/app.py`")
         return
-    
+
     # Image upload
     uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
-    
+
     # Display original image if uploaded
     if uploaded_file is not None:
         # Read the image
         image_bytes = uploaded_file.getvalue()
         original_image = Image.open(io.BytesIO(image_bytes))
-        
+
         # Create columns for before/after display
         col1, col2 = st.columns(2)
-        
+
         with col1:
             st.subheader("Original Image")
-            st.image(original_image, use_column_width=True)
-        
+            st.image(original_image, use_container_width=True)
+
         # Process the image if the button is clicked
         if st.button("Enhance Image"):
             # Reset file position
             uploaded_file.seek(0)
-            
+
             # Process the image
             enhanced_image = process_image(uploaded_file)
-            
+
             # Display enhanced image
             if enhanced_image is not None:
                 with col2:
                     st.subheader("Enhanced Image")
-                    st.image(enhanced_image, use_column_width=True)
-                
+                    st.image(enhanced_image, use_container_width=True)
+
                 # Provide download button for enhanced image
                 buffered = io.BytesIO()
                 enhanced_image.save(buffered, format="PNG")
