@@ -36,23 +36,23 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train glare removal model')
     parser.add_argument('--data_dir', type=str, required=True, help='Directory containing the dataset')
     parser.add_argument('--output_dir', type=str, default='./models', help='Directory to save model')
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
-    parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
+    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
+    parser.add_argument('--lr', type=float, default=0.00010618302289321592, help='Learning rate')
     parser.add_argument('--val_split', type=float, default=0.2, help='Validation split ratio')
-    parser.add_argument('--num_workers', type=int, default=8, help='Number of dataloader workers')
+    parser.add_argument('--num_workers', type=int, default=4, help='Number of dataloader workers')
     parser.add_argument('--save_every', type=int, default=10, help='Save checkpoint every N epochs')
-    parser.add_argument('--early_stop', type=float, default=0, help='Early stopping loss threshold')
+    parser.add_argument('--patience', type=int, default=10, help='Early stopping patience (number of epochs without improvement)')
     parser.add_argument('--model', type=str, default='optimized', choices=['basic', 'enhanced', 'optimized'], help='Model architecture to use')
     parser.add_argument('--use_wandb', action='store_true', help='Use Weights & Biases for logging')
     parser.add_argument('--wandb_project', type=str, default='image-deglaring', help='Weights & Biases project name')
     parser.add_argument('--wandb_entity', type=str, default=None, help='Weights & Biases entity (team) name')
     parser.add_argument('--use_amp', action='store_true', help='Use automatic mixed precision training')
-    parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
+    parser.add_argument('--weight_decay', type=float, default=0.00000531178913994609, help='Weight decay for optimizer')
     parser.add_argument('--clip_grad_norm', type=float, default=1.0, help='Gradient clipping norm value')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--log_images_every', type=int, default=5, help='Log images to wandb every N epochs')
-    parser.add_argument('--image_size', type=int, default=256, help='Size of images for training (smaller = faster)')
+    parser.add_argument('--image_size', type=int, default=512, help='Size of images for training (smaller = faster)')
     parser.add_argument('--validation_metrics_every', type=int, default=5, help='Calculate validation metrics every N epochs')
     parser.add_argument('--prefetch_factor', type=int, default=2, help='Number of batches to prefetch per worker')
     parser.add_argument('--persistent_workers', action='store_true', help='Keep workers alive between epochs')
@@ -159,12 +159,13 @@ def log_images_to_wandb(inputs, outputs, targets, max_images=2):
 
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
-                device, num_epochs, output_dir, save_every, early_stop_threshold,
+                device, num_epochs, output_dir, save_every, patience,
                 use_wandb=False, use_amp=False, clip_grad_norm=1.0,
                 log_images_every=5, validation_metrics_every=5):
     """Train the model with optimized settings"""
     best_val_loss = float('inf')
     best_model_weights = None
+    epochs_without_improvement = 0
 
     train_losses = []
     val_losses = []
@@ -314,8 +315,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             if use_wandb:
                 wandb.save(checkpoint_path)
 
-        # Save best model
+        # Save best model and check for improvement
         if val_loss < best_val_loss:
+            # Reset patience counter when validation loss improves
+            epochs_without_improvement = 0
+
             best_val_loss = val_loss
             best_model_weights = copy.deepcopy(model.state_dict())
             best_model_path = os.path.join(output_dir, 'best_model.pth')
@@ -333,10 +337,21 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                     wandb.run.summary["best_val_ssim"] = val_ssim
                 wandb.run.summary["best_epoch"] = epoch + 1
                 wandb.save(best_model_path)
+        else:
+            # Increment patience counter when no improvement
+            epochs_without_improvement += 1
+            print(f"No improvement for {epochs_without_improvement} epochs (best: {best_val_loss:.4f}, current: {val_loss:.4f})")
 
-        # Early stopping check
-        if val_loss < early_stop_threshold:
-            print(f"Early stopping at epoch {epoch+1} with validation loss {val_loss:.4f} < {early_stop_threshold}")
+            # Log patience counter
+            if use_wandb:
+                wandb.log({"epochs_without_improvement": epochs_without_improvement})
+
+        # Early stopping check based on patience
+        if epochs_without_improvement >= patience:
+            print(f"Early stopping triggered after {patience} epochs without improvement")
+            if use_wandb:
+                wandb.run.summary["early_stopped"] = True
+                wandb.run.summary["early_stopping_epoch"] = epoch + 1
             break
 
     # Plot training progress
@@ -415,7 +430,7 @@ def main():
                 "learning_rate": args.lr,
                 "epochs": args.epochs,
                 "weight_decay": args.weight_decay,
-                "early_stop_threshold": args.early_stop,
+                "patience": args.patience,
                 "use_amp": args.use_amp,
                 "clip_grad_norm": args.clip_grad_norm,
                 "seed": args.seed,
@@ -436,7 +451,7 @@ def main():
 
     # Define loss function and optimizer with more modern settings
     criterion = nn.L1Loss()
-    optimizer = torch.optim.AdamW(  # AdamW is often better than Adam
+    optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.lr,
         weight_decay=args.weight_decay,
@@ -461,7 +476,7 @@ def main():
         num_epochs=args.epochs,
         output_dir=args.output_dir,
         save_every=args.save_every,
-        early_stop_threshold=args.early_stop,
+        patience=args.patience,
         use_wandb=args.use_wandb,
         use_amp=args.use_amp,
         clip_grad_norm=args.clip_grad_norm,
