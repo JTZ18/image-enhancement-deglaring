@@ -1,0 +1,29 @@
+version: '3'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./api/logs:/app/api/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
