@@ -18,7 +18,7 @@ def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Evaluate glare removal model on validation set')
     parser.add_argument('--data_dir', type=str, default='SD1/val', help='Directory containing validation images')
-    parser.add_argument('--model_path', type=str, default='./models/best_model.pth',
+    parser.add_argument('--model_path', type=str, default='./best_model.pth',
                       help='Path to the best model checkpoint')
     parser.add_argument('--model', type=str, help='Model architecture to use', choices=['optimized', 'lightweight'], default='lightweight')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size for evaluation')
