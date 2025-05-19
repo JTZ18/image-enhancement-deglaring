@@ -21,3 +21,5 @@ eval_visualizations
 wandb
 
 data.zip
+
+*.log
