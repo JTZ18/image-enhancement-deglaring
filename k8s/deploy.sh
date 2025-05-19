@@ -10,6 +10,11 @@ echo "Building Docker images..."
 docker build -t image-enhancement-api:latest -f api/Dockerfile .
 docker build -t image-enhancement-frontend:latest -f frontend/Dockerfile frontend/
 
+# Load images into Minikube
+echo "Loading Docker images into Minikube..."
+minikube image load image-enhancement-api:latest
+minikube image load image-enhancement-frontend:latest
+
 # Apply Kubernetes manifests
 echo "Applying Kubernetes manifests..."
 kubectl apply -f k8s/model-configmap.yaml
