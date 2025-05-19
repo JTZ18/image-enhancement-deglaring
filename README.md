@@ -169,3 +169,13 @@ python api/test_api.py --test infer --image ./api/test_input1.png
 python api/test_api.py --test infer --image ./api/test_input2.png
 ```
 > The Predicted images will be saved in the `api/test_output` directory.
+
+## Reproducing eval reuslts
+Ensure `SD1` data folder is present in the root directory, with `train` and `val` subfolders.
+This script will load the best_model.pth in the root directory and evaluate the model on the val set.
+```bash
+python evaluate.py
+```
+- L1 Loss: 0.0168
+- PSNR: 32.57 dB
+- SSIM: 0.9750
