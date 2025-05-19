@@ -1,11 +1,14 @@
 # Image Enhancement System
 
-This system enhances grayscale images using a UNet model. It consists of a FastAPI backend for image processing and a Streamlit frontend for user interaction. The deployed frontend is available at https://image-enhancement-frontend.joozcave.uk. The deployed backend is available at https://image-enhancement-backend.joozcave.uk. The full report for this project is available [here](https://wandb.ai/jooz-cave/image-deglaring-sweep/reports/Image-De-glaring---VmlldzoxMjg0MTExMw?accessToken=npyx1xtj55rqrp8lqvzuauc3uur79os9udklwnustgslmelvqld3vqhlrn0amz61)
+This system enhances grayscale images using a UNet model. It consists of a FastAPI backend for image processing and a Streamlit frontend for user interaction.
+- The deployed frontend is available at https://image-enhancement-frontend.joozcave.uk
+- The deployed backend is available at https://image-enhancement-backend.joozcave.uk
+- The full Weights and Biases report for this project is available [here](https://wandb.ai/jooz-cave/image-deglaring-sweep/reports/Image-De-glaring---VmlldzoxMjg0MTExMw?accessToken=npyx1xtj55rqrp8lqvzuauc3uur79os9udklwnustgslmelvqld3vqhlrn0amz61)
 
 ## Project Structure
 
 ```
-/ta-2025/
+/image-enhancement-glare-removal/
 ├── api/                 # Backend API
 │   ├── app.py           # FastAPI application
 │   ├── Dockerfile       # Docker configuration for API
@@ -46,7 +49,7 @@ pip install -r requirements.txt
 python src/optimized_train.py --data_dir SD1/train/
 ```
 
-### Easy Docker Compose Setup
+### Easy Docker Compose Setup (Recommended)
 This command easily builds and runs the API and frontend in containers. You will be able to visit the frontend at http://localhost:8501.
 ```bash
 docker compose up
@@ -84,6 +87,22 @@ python api/app.py
 ```
 
 The API will be available at http://localhost:4000.
+
+### Using Docker for the Frontend
+This is an alternative to Docker Compose.
+
+1. Build the Docker image:
+
+```bash
+docker build -t image-enhancement-frontend -f frontend/Dockerfile .
+```
+
+2. Run the Docker container:
+
+```bash
+docker run -p 8501:8501 image-enhancement-frontend
+```
+
 
 ### Frontend Application
 If you want to run locally
