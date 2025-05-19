@@ -12,3 +12,10 @@ wheels/
 **/.claude/settings.local.json
 
 SD1/
+
+models
+eval_visualizations
+
+.claude
+
+wandb
