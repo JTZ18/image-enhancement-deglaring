@@ -20,7 +20,8 @@ load_dotenv()
 
 # Import from src modules
 from src.dataset import create_dataloaders, create_optimized_dataloaders
-from src.model import LightweightUNet, EnhancedUNet, OptimizedUNet, count_parameters, get_model_size_mb
+from src.model import LightweightUNet, EnhancedUNet, count_parameters, get_model_size_mb
+from src.optimized_model import OptimizedUNet
 from src.utils import set_seed
 
 
@@ -36,19 +37,19 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train glare removal model')
     parser.add_argument('--data_dir', type=str, required=True, help='Directory containing the dataset')
     parser.add_argument('--output_dir', type=str, default='./models', help='Directory to save model')
-    parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
-    parser.add_argument('--lr', type=float, default=0.00010618302289321592, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=0.002362532125818593, help='Learning rate')
     parser.add_argument('--val_split', type=float, default=0.2, help='Validation split ratio')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of dataloader workers')
     parser.add_argument('--save_every', type=int, default=10, help='Save checkpoint every N epochs')
     parser.add_argument('--patience', type=int, default=10, help='Early stopping patience (number of epochs without improvement)')
-    parser.add_argument('--model', type=str, default='optimized', choices=['basic', 'enhanced', 'optimized'], help='Model architecture to use')
+    parser.add_argument('--model', type=str, default='basic', choices=['basic', 'enhanced', 'optimized'], help='Model architecture to use')
     parser.add_argument('--use_wandb', action='store_true', help='Use Weights & Biases for logging')
     parser.add_argument('--wandb_project', type=str, default='image-deglaring', help='Weights & Biases project name')
     parser.add_argument('--wandb_entity', type=str, default=None, help='Weights & Biases entity (team) name')
     parser.add_argument('--use_amp', action='store_true', help='Use automatic mixed precision training')
-    parser.add_argument('--weight_decay', type=float, default=0.00000531178913994609, help='Weight decay for optimizer')
+    parser.add_argument('--weight_decay', type=float, default=0.00006753784966611083, help='Weight decay for optimizer')
     parser.add_argument('--clip_grad_norm', type=float, default=1.0, help='Gradient clipping norm value')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--log_images_every', type=int, default=5, help='Log images to wandb every N epochs')
@@ -372,10 +373,6 @@ def main():
     """Main function for training the glare removal model"""
     args = parse_args()
 
-    # Environmental variables for reproducibility
-    os.environ["PYTHONHASHSEED"] = str(args.seed)
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-
     # Set random seed for reproducibility
     set_seed(args.seed)
 
@@ -385,17 +382,6 @@ def main():
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
-
-    # Ensure deterministic algorithms are used
-    if hasattr(torch, 'use_deterministic_algorithms'):
-        torch.use_deterministic_algorithms(True)
-    elif hasattr(torch, 'set_deterministic'):
-        torch.set_deterministic(True)
-
-    # Disable cuDNN benchmark mode for reproducibility
-    if device.type == 'cuda':
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
 
     # Create data generators for worker seeding
     g_train = torch.Generator()
