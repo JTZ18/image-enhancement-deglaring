@@ -99,7 +99,7 @@ def create_evaluation_dataloader(data_dir, batch_size, num_workers, image_size, 
         transform=val_transform,
         seed=seed,
         image_size=image_size,
-        cache_images=True  # Cache images for faster evaluation
+        cache_images=False
     )
 
     # Create dataloader
@@ -154,7 +154,7 @@ def evaluate(model, val_loader, device, save_visualizations=False,
             outputs = model(inputs)
             outputs_min = outputs.min().item()
             outputs_max = outputs.max().item()
-            print(f"[Batch {batch_idx}] Output tensor range: min={outputs_min:.4f}, max={outputs_max:.4f}")
+            # print(f"[Batch {batch_idx}] Output tensor range: min={outputs_min:.4f}, max={outputs_max:.4f}")
 
             # Calculate L1 loss
             loss = criterion(outputs, targets)
