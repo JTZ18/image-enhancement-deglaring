@@ -72,7 +72,7 @@ pip install -r requirements.txt
 2. Run the training script:
 
 ```bash
-python src/optimized_train.py --data_dir SD1/train/
+python optimized_train.py --data_dir SD1/train/
 ```
 
 ### Easy Docker Compose Setup (Recommended)
