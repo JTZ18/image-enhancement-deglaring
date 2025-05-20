@@ -7,6 +7,7 @@ from tqdm import tqdm
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 import matplotlib.pyplot as plt
 import glob
+import onnxruntime as ort
 
 # Import from src modules
 from src.model import LightweightUNet
@@ -19,8 +20,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Evaluate glare removal model on validation set')
     parser.add_argument('--data_dir', type=str, default='SD1/val', help='Directory containing validation images')
     parser.add_argument('--model_path', type=str, default='./best_model.pth',
-                      help='Path to the best model checkpoint')
+                      help='Path to the model checkpoint (.pth) or ONNX model (.onnx)')
     parser.add_argument('--model', type=str, help='Model architecture to use', choices=['optimized', 'lightweight'], default='lightweight')
+    parser.add_argument('--model_type', type=str, choices=['pth', 'onnx'], default='pth',
+                      help='Type of model to evaluate (pth for PyTorch or onnx for ONNX)')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size for evaluation')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of dataloader workers')
     parser.add_argument('--image_size', type=int, default=512, help='Size of images for evaluation')
@@ -33,9 +36,9 @@ def parse_args():
                       help='Maximum number of samples to visualize')
     return parser.parse_args()
 
-def load_model(model_path, device, model_arch):
+def load_pytorch_model(model_path, device, model_arch):
     """
-    Load the model from checkpoint
+    Load the model from PyTorch checkpoint
 
     Args:
         model_path (str): Path to the model checkpoint
@@ -65,6 +68,94 @@ def load_model(model_path, device, model_arch):
 
     model.eval()
     return model
+
+
+def load_onnx_model(model_path, device):
+    """
+    Load the model from ONNX file
+
+    Args:
+        model_path (str): Path to the ONNX model file
+        device (torch.device): Device to load the model on
+    Returns:
+        OnnxModelWrapper: Loaded model wrapped in a compatible interface
+    """
+    print(f"Loading ONNX model from: {model_path}")
+    
+    # Configure ONNX Runtime session with appropriate execution provider
+    if torch.cuda.is_available() and str(device) != 'cpu':
+        print("Using CUDA for ONNX Runtime")
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    else:
+        print("Using CPU for ONNX Runtime")
+        providers = ['CPUExecutionProvider']
+    
+    # Create ONNX Runtime session
+    try:
+        ort_session = ort.InferenceSession(model_path, providers=providers)
+        print("ONNX model loaded successfully")
+        
+        # Log model input and output details
+        input_name = ort_session.get_inputs()[0].name
+        output_name = ort_session.get_outputs()[0].name
+        input_shape = ort_session.get_inputs()[0].shape
+        output_shape = ort_session.get_outputs()[0].shape
+        
+        print(f"Model input name: {input_name}, shape: {input_shape}")
+        print(f"Model output name: {output_name}, shape: {output_shape}")
+        
+        # Create a wrapper class to provide a PyTorch-like interface
+        class OnnxModelWrapper(nn.Module):
+            def __init__(self, ort_session, input_name, output_name):
+                super().__init__()
+                self.ort_session = ort_session
+                self.input_name = input_name
+                self.output_name = output_name
+                self.device = device
+            
+            def forward(self, x):
+                # Convert PyTorch tensor to numpy for ONNX Runtime
+                input_numpy = x.cpu().numpy()
+                
+                # Run inference
+                ort_inputs = {self.input_name: input_numpy}
+                ort_outputs = self.ort_session.run([self.output_name], ort_inputs)
+                
+                # Convert output back to PyTorch tensor on the specified device
+                return torch.from_numpy(ort_outputs[0]).to(self.device)
+            
+            def eval(self):
+                # ONNX models are always in eval mode, but we provide this for compatibility
+                return self
+        
+        # Create and return the wrapper
+        model = OnnxModelWrapper(ort_session, input_name, output_name)
+        print("ONNX model wrapper created successfully")
+        return model
+        
+    except Exception as e:
+        print(f"Error loading ONNX model: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        raise
+
+
+def load_model(model_path, device, model_arch, model_type='pth'):
+    """
+    Load the model based on the specified type
+
+    Args:
+        model_path (str): Path to the model file
+        device (torch.device): Device to load the model on
+        model_arch (str): Model architecture to use (for PyTorch models)
+        model_type (str): Type of model to load ('pth' or 'onnx')
+    Returns:
+        nn.Module: Loaded model or model wrapper
+    """
+    if model_type == 'onnx':
+        return load_onnx_model(model_path, device)
+    else:
+        return load_pytorch_model(model_path, device, model_arch)
 
 def create_evaluation_dataloader(data_dir, batch_size, num_workers, image_size, seed):
     """
@@ -243,8 +334,20 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
+    # Automatically detect model type from file extension if not specified
+    if args.model_type == 'pth' and args.model_path.lower().endswith('.onnx'):
+        print(f"Model path has .onnx extension, setting model_type to 'onnx'")
+        model_type = 'onnx'
+    elif args.model_type == 'onnx' and args.model_path.lower().endswith('.pth'):
+        print(f"Model path has .pth extension, setting model_type to 'pth'")
+        model_type = 'pth'
+    else:
+        model_type = args.model_type
+    
+    print(f"Evaluating {model_type.upper()} model from {args.model_path}")
+
     # Load model
-    model = load_model(args.model_path, device, args.model)
+    model = load_model(args.model_path, device, args.model, model_type)
 
     # Create evaluation dataloader
     val_loader = create_evaluation_dataloader(
@@ -269,6 +372,8 @@ def main():
     metrics_dir = os.path.dirname(args.model_path)
     with open(os.path.join(metrics_dir, 'evaluation_results.txt'), 'w') as f:
         f.write(f"Evaluation results on {args.data_dir}:\n")
+        f.write(f"Model type: {model_type.upper()}\n")
+        f.write(f"Model path: {args.model_path}\n")
         f.write(f"L1 Loss: {metrics['l1_loss']:.4f}\n")
         f.write(f"PSNR: {metrics['psnr']:.2f} dB\n")
         f.write(f"SSIM: {metrics['ssim']:.4f}\n")
